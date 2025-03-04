@@ -1,0 +1,45 @@
+yaml
+---
+- name: Install IBM Liberty on CICS
+  hosts: cics_servers
+  become: yes
+  vars:
+    ibm_liberty_version: "21.0.0.4"
+    ibm_liberty_install_path: /opt/ibm/liberty
+    ibm_liberty_download_url: https://public.dhe.ibm.com/ibmdl/export/pub/systems/infrastructure/isvm/lib/ibm-liberty-{version}.tar.gz
+    ibm_liberty_download_file: ibm-liberty-{{ ibm_liberty_version }}.tar.gz
+    ibm_liberty_checksum: sha256://<checksum_of_the_file>
+
+  tasks:
+    - name: Download IBM Liberty
+      get_url:
+        url: "{{ ibm_liberty_download_url }}"
+        dest: "/tmp/{{ ibm_liberty_download_file }}"
+        validate_certs: no
+
+    - name: Verify checksum
+      shell: |
+        curl -s -o /dev/null -f -L --remote-name --silent --show-error "{{ ibm_liberty_download_url }}" && \
+        echo "{{ ibm_liberty_checksum }} *{{ ibm_liberty_download_file }}" | sha256sum --check
+        ret=$?
+        test $ret -eq 0
+      args:
+        creates: /tmp/{{ ibm_liberty_download_file }}
+
+    - name: Extract IBM Liberty
+      unarchive:
+        src: "/tmp/{{ ibm_liberty_download_file }}"
+        dest: "{{ ibm_liberty_install_path }}"
+
+    - name: Add IBM Liberty to PATH
+      lineinfile:
+        path: /etc/profile
+        line: 'export PATH=${{ ibm_liberty_install_path }}/runtimes/zos_unicode_11.0/bin:$PATH'
+        create: true
+        insertafter: '^# IBM Liberty Profiles'
+
+    - name: Restart CICS region
+      cics_restart:
+        hostname: "{{ inventory_hostname }}"
+        region: "your_cics_region"
+        state: restarted
